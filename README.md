@@ -1,16 +1,17 @@
 # Agentes IA
 
-Proyecto de aplicación web con React frontend y Express.js backend.
+Proyecto de aplicacion web con React en el frontend y Express.js en el backend.
 
 ## Estructura
 
-- **frontend/**: Aplicación React con Vite
-- **server/**: Servidor Express.js
-- **Sample Applications/**: Aplicaciones de muestra
+- `frontend/`: aplicacion React con Vite
+- `server/`: servidor Express.js
+- `Sample Applications/`: aplicaciones de muestra
 
-## Instalación
+## Instalacion
 
 ### Frontend
+
 ```bash
 cd frontend
 npm install
@@ -18,6 +19,7 @@ npm run dev
 ```
 
 ### Backend
+
 ```bash
 cd server
 npm install
@@ -26,6 +28,6 @@ npm run dev
 
 ## Scripts
 
-- `npm run dev` - Inicia el servidor en modo desarrollo
-- `npm run build` - Construye para producción
-- `npm start` - Inicia el servidor en producción
+- `npm run dev`: inicia el servidor en modo desarrollo
+- `npm run build`: construye para produccion
+- `npm start`: inicia el servidor en produccion
