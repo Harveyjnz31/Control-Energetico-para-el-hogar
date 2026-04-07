@@ -376,6 +376,22 @@
   border-radius: 1.6rem;
 }
 
+.panel--loading {
+  margin-top: 1.2rem;
+  text-align: center;
+}
+
+.panel--loading h2 {
+  margin: 0.85rem 0 0;
+  font-size: 1.9rem;
+}
+
+.panel--loading p {
+  max-width: 36ch;
+  margin: 0.9rem auto 0;
+  color: var(--ink-700);
+}
+
 .panel--wide {
   min-width: 0;
 }
