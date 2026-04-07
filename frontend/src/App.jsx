@@ -1,160 +1,215 @@
-import { useState, useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
-  LineChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
 } from "recharts";
 import "./App.css";
 
-function App() {
-  // Estilos constantes para mantener un diseño limpio y profesional
-  const styles = {
-    container: {
-      fontFamily:
-        "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-      color: "#1a1a1a",
-      maxWidth: "900px",
-      margin: "40px auto",
-      padding: "0 20px",
-      lineHeight: "1.6",
-    },
-    card: {
-      backgroundColor: "#ffffff",
-      borderRadius: "8px",
-      border: "1px solid #e1e4e8",
-      padding: "32px",
-      boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-      marginBottom: "32px",
-    },
-    title: {
-      fontSize: "24px",
-      fontWeight: "600",
-      margin: "0 0 8px 0",
-      color: "#091e42",
-    },
-    subtitle: {
-      fontSize: "14px",
-      color: "#626f86",
-      marginBottom: "24px",
-    },
-    button: (isLoading, disabled) => ({
-      backgroundColor: isLoading || disabled ? "#ebecf0" : "#0052cc",
-      color: isLoading || disabled ? "#a5adba" : "#ffffff",
-      border: "none",
-      borderRadius: "3px",
-      padding: "10px 24px",
-      fontSize: "14px",
-      fontWeight: "500",
-      cursor: isLoading || disabled ? "not-allowed" : "pointer",
-      transition: "background-color 0.2s",
-    }),
-    insightCard: {
-      flex: "1",
-      minWidth: "200px",
-      padding: "24px",
-      backgroundColor: "#ffffff",
-      borderRadius: "4px",
-      textAlign: "center",
-      border: "1px solid #e1e4e8",
-      boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-    },
-    secondaryButton: {
-      backgroundColor: "transparent",
-      color: "#0052cc",
-      border: "1px solid #0052cc",
-      borderRadius: "3px",
-      padding: "9px 23px",
-      fontSize: "14px",
-      fontWeight: "500",
-      cursor: "pointer",
-      textDecoration: "none",
-      display: "inline-flex",
-      alignItems: "center",
-      transition: "all 0.2s",
-    },
-    success: {
-      backgroundColor: "#e3fcef",
-      color: "#006644",
-      padding: "12px",
-      borderRadius: "3px",
-      fontSize: "14px",
-      marginTop: "16px",
-      borderLeft: "4px solid #36b37e",
-    },
-    error: {
-      backgroundColor: "#ffebe6",
-      color: "#bf2600",
-      padding: "12px",
-      borderRadius: "3px",
-      fontSize: "14px",
-      marginTop: "16px",
-      borderLeft: "4px solid #de350b",
-    },
-    table: {
-      width: "100%",
-      borderCollapse: "collapse",
-      marginTop: "16px",
-      fontSize: "14px",
-    },
-    th: {
-      backgroundColor: "#f4f5f7",
-      color: "#44546f",
-      fontWeight: "600",
-      textAlign: "left",
-      padding: "12px",
-      borderBottom: "2px solid #e1e4e8",
-    },
-    td: {
-      padding: "12px",
-      borderBottom: "1px solid #e1e4e8",
-      color: "#172b4d",
-    },
-  };
+const REQUIRED_COLUMNS = ["Fecha", "Consumo"];
+const ACCEPTED_FILE_TYPES =
+  ".xlsx,.xls,.csv,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+const numberFormatter = new Intl.NumberFormat("es-CO", {
+  maximumFractionDigits: 2,
+});
+
+const shortDateFormatter = new Intl.DateTimeFormat("es-CO", {
+  day: "2-digit",
+  month: "short",
+});
+
+const fullDateFormatter = new Intl.DateTimeFormat("es-CO", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+
+const monthFormatter = new Intl.DateTimeFormat("es-CO", {
+  month: "long",
+  year: "numeric",
+});
+
+function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 KB";
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getFileExtension(filename = "") {
+  const parts = filename.split(".");
+  return parts.length > 1 ? parts.at(-1).toUpperCase() : "ARCHIVO";
+}
+
+function parseConsumption(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  let normalizedValue = trimmedValue.replace(/\s+/g, "");
+  const lastComma = normalizedValue.lastIndexOf(",");
+  const lastDot = normalizedValue.lastIndexOf(".");
+
+  if (lastComma !== -1 && lastDot !== -1) {
+    if (lastComma > lastDot) {
+      normalizedValue = normalizedValue.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalizedValue = normalizedValue.replace(/,/g, "");
+    }
+  } else if (lastComma !== -1) {
+    normalizedValue = normalizedValue.replace(",", ".");
+  }
+
+  const parsedValue = Number(normalizedValue);
+  return Number.isFinite(parsedValue) ? parsedValue : null;
+}
+
+function parseDateValue(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    const parsedValue = new Date(excelEpoch.getTime() + value * 86400000);
+    return Number.isNaN(parsedValue.getTime())
+      ? null
+      : new Date(
+          parsedValue.getUTCFullYear(),
+          parsedValue.getUTCMonth(),
+          parsedValue.getUTCDate(),
+        );
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const isoMatch = trimmedValue.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+
+  const latinMatch = trimmedValue.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
+  if (latinMatch) {
+    const [, day, month, year] = latinMatch;
+    const normalizedYear =
+      year.length === 2 ? Number(`20${year}`) : Number(year);
+    return new Date(normalizedYear, Number(month) - 1, Number(day));
+  }
+
+  const parsedValue = new Date(trimmedValue);
+  return Number.isNaN(parsedValue.getTime())
+    ? null
+    : new Date(
+        parsedValue.getFullYear(),
+        parsedValue.getMonth(),
+        parsedValue.getDate(),
+      );
+}
+
+function formatConsumption(value) {
+  return `${numberFormatter.format(value)} kWh`;
+}
+
+function ChartTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  return (
+    <div className="chart-tooltip">
+      <span className="chart-tooltip__label">{label}</span>
+      <strong className="chart-tooltip__value">
+        {formatConsumption(payload[0].value)}
+      </strong>
+    </div>
+  );
+}
+
+function App() {
+  const fileInputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [uploadMeta, setUploadMeta] = useState(null);
 
-  const handleFileChange = (e) => {
-    setFile(e.target.files[0]);
-    setError(null);
+  const handleFileChange = (event) => {
+    const selectedFile = event.target.files?.[0] ?? null;
+
+    setFile(selectedFile);
+    setError("");
+    setSuccessMessage("");
     setData([]);
-    setSuccess(false);
+    setUploadMeta(null);
   };
 
   const handleUpload = async () => {
     if (!file) {
-      setError("Selecciona un archivo primero");
+      setError("Selecciona un archivo antes de iniciar el analisis.");
       return;
     }
 
     setLoading(true);
-    setError(null);
+    setError("");
+    setSuccessMessage("");
+
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      const res = await fetch("/api/upload", {
+      const response = await fetch("/api/upload", {
         method: "POST",
         body: formData,
       });
 
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Error en el servidor");
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || "No se pudo procesar el archivo.");
+      }
 
-      setData(result.data);
-      setSuccess(true);
-    } catch (error) {
-      console.error(error);
-      setError(error.message);
+      setData(result.data ?? []);
+      setUploadMeta({
+        rows: result.data?.length ?? 0,
+        sheetName: result.sheetName || "Principal",
+        sourceFormat: result.sourceFormat || getFileExtension(file.name),
+        fileName: file.name,
+      });
+      setSuccessMessage(
+        `Se importaron ${result.data?.length ?? 0} registros desde ${file.name}.`,
+      );
+    } catch (uploadError) {
+      console.error(uploadError);
+      setError(uploadError.message);
     } finally {
       setLoading(false);
     }
@@ -163,354 +218,476 @@ function App() {
   const handleClear = () => {
     setFile(null);
     setData([]);
-    setError(null);
-    setSuccess(false);
+    setError("");
+    setSuccessMessage("");
+    setUploadMeta(null);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
-  // Procesamiento de datos para las gráficas
   const analytics = useMemo(() => {
-    if (!data.length) return null;
+    if (!data.length) {
+      return null;
+    }
 
-    const dailyData = data
-      .map((d) => ({
-        fecha: d.Fecha,
-        consumo: Number(d.Consumo),
-        rawDate: new Date(d.Fecha),
-      }))
-      .sort((a, b) => a.rawDate - b.rawDate);
+    const normalizedRows = data
+      .map((row) => {
+        const parsedDate = parseDateValue(row.Fecha);
+        const parsedConsumption = parseConsumption(row.Consumo);
 
-    const monthlyMap = {};
-    dailyData.forEach((d) => {
-      const month = d.rawDate.toLocaleString("default", {
-        month: "long",
-        year: "numeric",
-      });
-      monthlyMap[month] = (monthlyMap[month] || 0) + d.consumo;
-    });
+        if (!parsedDate || parsedConsumption === null) {
+          return null;
+        }
 
-    const monthlyData = Object.keys(monthlyMap).map((m) => ({
-      mes: m,
-      consumo: Number(monthlyMap[m].toFixed(2)),
-    }));
+        const monthDate = new Date(
+          parsedDate.getFullYear(),
+          parsedDate.getMonth(),
+          1,
+        );
 
-    const peakDay = [...dailyData].sort((a, b) => b.consumo - a.consumo)[0];
-    const peakMonth = [...monthlyData].sort((a, b) => b.consumo - a.consumo)[0];
-    const topDays = [...dailyData]
-      .sort((a, b) => b.consumo - a.consumo)
-      .slice(0, 5);
+        return {
+          ...row,
+          rawDate: parsedDate,
+          monthDate,
+          sortTime: parsedDate.getTime(),
+          fechaCompleta: fullDateFormatter.format(parsedDate),
+          fechaCorta: shortDateFormatter.format(parsedDate),
+          consumo: parsedConsumption,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => left.sortTime - right.sortTime);
 
-    const totalConsumo = monthlyData.reduce(
-      (acc, curr) => acc + curr.consumo,
+    if (!normalizedRows.length) {
+      return null;
+    }
+
+    const monthlyMap = normalizedRows.reduce((accumulator, row) => {
+      const monthKey = row.monthDate.getTime();
+
+      if (!accumulator[monthKey]) {
+        accumulator[monthKey] = {
+          monthDate: row.monthDate,
+          mes: monthFormatter.format(row.monthDate),
+          consumo: 0,
+        };
+      }
+
+      accumulator[monthKey].consumo += row.consumo;
+      return accumulator;
+    }, {});
+
+    const monthlyData = Object.values(monthlyMap)
+      .sort((left, right) => left.monthDate - right.monthDate)
+      .map((item) => ({
+        ...item,
+        consumo: Number(item.consumo.toFixed(2)),
+      }));
+
+    const totalConsumo = normalizedRows.reduce(
+      (accumulator, row) => accumulator + row.consumo,
       0,
     );
+    const averageConsumo = totalConsumo / normalizedRows.length;
+    const peakDay = [...normalizedRows].sort(
+      (left, right) => right.consumo - left.consumo,
+    )[0];
+    const peakMonth = [...monthlyData].sort(
+      (left, right) => right.consumo - left.consumo,
+    )[0];
+    const topDays = [...normalizedRows]
+      .sort((left, right) => right.consumo - left.consumo)
+      .slice(0, 5);
 
     return {
-      dailyData,
-      monthlyData,
+      totalConsumo,
+      averageConsumo,
+      totalDays: normalizedRows.length,
+      rangeStart: normalizedRows[0].fechaCompleta,
+      rangeEnd: normalizedRows.at(-1).fechaCompleta,
       peakDay,
       peakMonth,
       topDays,
-      totalConsumo,
+      dailyData: normalizedRows.map((row) => ({
+        fecha: row.fechaCorta,
+        fechaCompleta: row.fechaCompleta,
+        consumo: Number(row.consumo.toFixed(2)),
+      })),
+      monthlyData,
     };
   }, [data]);
 
+  const sourceFormatLabel = uploadMeta?.sourceFormat || "CSV / XLSX";
+  const sourceFileName = uploadMeta?.fileName || "Sin archivo seleccionado";
+  const rowsCount = uploadMeta?.rows || 0;
+
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>Gestión de Datos</h1>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            gap: "10px",
-          }}
-        >
-          <p style={styles.subtitle}>
-            Cargue el registro de consumo eléctrico. Requerido: columnas{" "}
-            <strong>Fecha</strong> y <strong>Consumo</strong>.
-          </p>
-          <a href="/api/template" style={styles.secondaryButton}>
-            Descargar Plantilla
-          </a>
-        </div>
+    <div className="app-shell">
+      <div className="app-shell__glow app-shell__glow--left" />
+      <div className="app-shell__glow app-shell__glow--right" />
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "16px",
-            flexWrap: "wrap",
-          }}
-        >
-          <input
-            type="file"
-            accept=".xlsx, .xls"
-            onChange={handleFileChange}
-            disabled={loading}
-            style={{ fontSize: "14px" }}
-          />
+      <main className="dashboard">
+        <section className="hero-card">
+          <div className="hero-copy">
+            <span className="eyebrow">Control energetico del hogar</span>
+            <h1>
+              Convierte tus archivos de consumo en un tablero claro, elegante y
+              accionable.
+            </h1>
+            <p className="hero-copy__lead">
+              Sube reportes en Excel o CSV, valida columnas clave y obtén una
+              lectura visual de los picos, tendencias y registros diarios sin
+              pasar por hojas manuales.
+            </p>
 
-          <button
-            onClick={handleUpload}
-            disabled={loading || !file}
-            style={styles.button(loading, !file)}
-          >
-            {loading ? "Procesando..." : "Cargar Archivo"}
-          </button>
-        </div>
-
-        {success && (
-          <div style={styles.success}>Archivo procesado correctamente.</div>
-        )}
-        {error && <div style={styles.error}>{error}</div>}
-      </div>
-
-      {analytics && (
-        <div style={{ marginBottom: "32px" }}>
-          <div
-            style={{
-              display: "flex",
-              gap: "16px",
-              marginBottom: "32px",
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={styles.insightCard}>
-              <span
-                style={{
-                  ...styles.subtitle,
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                }}
-              >
-                Consumo Total
-              </span>
-              <div
-                style={{ ...styles.title, color: "#0052cc", marginTop: "8px" }}
-              >
-                {analytics.totalConsumo.toFixed(2)} kWh
-              </div>
+            <div className="hero-chips">
+              <span className="chip">Formatos: CSV, XLSX y XLS</span>
+              <span className="chip">Columnas requeridas: Fecha y Consumo</span>
+              <span className="chip">Analisis inmediato hasta 5 MB</span>
             </div>
 
-            <div style={styles.insightCard}>
-              <span
-                style={{
-                  ...styles.subtitle,
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                }}
-              >
-                Promedio Diario
-              </span>
-              <div
-                style={{ ...styles.title, color: "#0052cc", marginTop: "8px" }}
-              >
-                {(analytics.totalConsumo / analytics.dailyData.length).toFixed(
-                  2,
-                )}{" "}
-                kWh
-              </div>
+            <div className="hero-feature-grid">
+              <article className="hero-feature">
+                <span className="hero-feature__kicker">Lectura rapida</span>
+                <strong>Totales, promedios y dias criticos</strong>
+                <p>
+                  La vista principal resume lo importante antes de entrar al
+                  detalle.
+                </p>
+              </article>
+
+              <article className="hero-feature">
+                <span className="hero-feature__kicker">Carga flexible</span>
+                <strong>Mismo flujo para CSV y Excel</strong>
+                <p>
+                  Puedes trabajar con exportaciones simples o archivos de hoja
+                  de calculo.
+                </p>
+              </article>
             </div>
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-              gap: "16px",
-              marginBottom: "32px",
-            }}
-          >
-            <div style={styles.card}>
-              <h3
-                style={{
-                  ...styles.subtitle,
-                  fontSize: "16px",
-                  marginBottom: "16px",
-                }}
-              >
-                Top 5 Días de Mayor Consumo
-              </h3>
-              <ul
-                style={{
-                  listStyle: "none",
-                  padding: 0,
-                  margin: 0,
-                  fontSize: "14px",
-                }}
-              >
-                {analytics.topDays.map((day, i) => (
-                  <li
-                    key={i}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "8px 0",
-                      borderBottom: i < 4 ? "1px solid #f4f5f7" : "none",
-                    }}
-                  >
-                    <span>{day.fecha}</span>
-                    <span style={{ fontWeight: "600", color: "#de350b" }}>
-                      {day.consumo} kWh
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div style={styles.card}>
-              <span
-                style={{
-                  ...styles.subtitle,
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                }}
-              >
-                Mes Pico
-              </span>
-              <div
-                style={{ ...styles.title, color: "#0052cc", marginTop: "8px" }}
-              >
-                {analytics.peakMonth.consumo} kWh
-              </div>
-              <span style={{ fontSize: "12px", color: "#626f86" }}>
-                {analytics.peakMonth.mes}
-              </span>
-            </div>
-            <div style={styles.card}>
-              <span
-                style={{
-                  ...styles.subtitle,
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                }}
-              >
-                Día Pico
-              </span>
-              <div
-                style={{ ...styles.title, color: "#de350b", marginTop: "8px" }}
-              >
-                {analytics.peakDay.consumo} kWh
-              </div>
-              <span style={{ fontSize: "12px", color: "#626f86" }}>
-                {new Date(analytics.peakDay.fecha).toLocaleDateString()}
-              </span>
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <h2 style={{ ...styles.title, fontSize: "18px" }}>
-              Tendencia Mensual
-            </h2>
-            <div style={{ width: "100%", height: 300, marginTop: "24px" }}>
-              <ResponsiveContainer>
-                <BarChart data={analytics.monthlyData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="mes"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip cursor={{ fill: "#f4f5f7" }} />
-                  <Bar dataKey="consumo" fill="#0052cc" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <h2 style={{ ...styles.title, fontSize: "18px" }}>
-              Detalle Diario
-            </h2>
-            <div style={{ width: "100%", height: 300, marginTop: "24px" }}>
-              <ResponsiveContainer>
-                <LineChart data={analytics.dailyData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="fecha"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="consumo"
-                    stroke="#0052cc"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 6 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {data.length > 0 && (
-        <div style={styles.card}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "16px",
-            }}
-          >
-            <div>
-              <h2 style={{ ...styles.title, fontSize: "18px", margin: 0 }}>
-                Vista previa de importación
-              </h2>
-              <p style={{ ...styles.subtitle, margin: 0 }}>
-                Mostrando los primeros 10 registros de un total de {data.length}
-                .
+          <aside className="upload-panel">
+            <div className="upload-panel__header">
+              <span className="eyebrow eyebrow--warm">Carga del archivo</span>
+              <h2>Analiza un nuevo consumo</h2>
+              <p>
+                Selecciona un archivo con las columnas requeridas y genera el
+                tablero al instante.
               </p>
             </div>
-            <button
-              onClick={handleClear}
-              style={{
-                ...styles.secondaryButton,
-                padding: "6px 16px",
-                color: "#626f86",
-                borderColor: "#e1e4e8",
-              }}
-            >
-              Limpiar
-            </button>
-          </div>
 
-          <div style={{ overflowX: "auto", maxWidth: "100%" }}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  {Object.keys(data[0]).map((key) => (
-                    <th key={key} style={styles.th}>
-                      {key}
-                    </th>
+            <label
+              className={`dropzone ${file ? "dropzone--active" : ""} ${
+                loading ? "dropzone--disabled" : ""
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                className="sr-only"
+                type="file"
+                accept={ACCEPTED_FILE_TYPES}
+                onChange={handleFileChange}
+                disabled={loading}
+              />
+
+              <span className="dropzone__badge">
+                {file ? getFileExtension(file.name) : "CSV / XLSX"}
+              </span>
+              <strong className="dropzone__title">
+                {file ? file.name : "Selecciona o arrastra tu archivo"}
+              </strong>
+              <span className="dropzone__meta">
+                {file
+                  ? `${formatFileSize(file.size)} · listo para procesar`
+                  : "Soporta .csv, .xlsx y .xls"}
+              </span>
+            </label>
+
+            <div className="panel-actions">
+              <button
+                className="button button--primary"
+                onClick={handleUpload}
+                disabled={loading || !file}
+              >
+                {loading ? "Procesando..." : "Analizar archivo"}
+              </button>
+
+              <button
+                className="button button--ghost"
+                onClick={handleClear}
+                disabled={loading && !file}
+              >
+                Limpiar
+              </button>
+            </div>
+
+            <div className="template-links">
+              <a href="/api/template">Plantilla XLSX</a>
+              <a href="/api/template?format=csv">Plantilla CSV</a>
+            </div>
+
+            <div className="file-brief">
+              <div>
+                <span className="file-brief__label">Formato</span>
+                <strong>{sourceFormatLabel}</strong>
+              </div>
+              <div>
+                <span className="file-brief__label">Archivo</span>
+                <strong>{sourceFileName}</strong>
+              </div>
+              <div>
+                <span className="file-brief__label">Filas cargadas</span>
+                <strong>{rowsCount}</strong>
+              </div>
+            </div>
+
+            {successMessage && (
+              <div className="status status--success">{successMessage}</div>
+            )}
+            {error && <div className="status status--error">{error}</div>}
+          </aside>
+        </section>
+
+        {analytics ? (
+          <>
+            <section className="metrics-grid">
+              <article className="metric-card metric-card--highlight">
+                <span className="metric-card__label">Consumo total</span>
+                <strong>{formatConsumption(analytics.totalConsumo)}</strong>
+                <p>Acumulado de todos los registros analizados.</p>
+              </article>
+
+              <article className="metric-card">
+                <span className="metric-card__label">Promedio diario</span>
+                <strong>{formatConsumption(analytics.averageConsumo)}</strong>
+                <p>Media simple sobre {analytics.totalDays} dias validos.</p>
+              </article>
+
+              <article className="metric-card">
+                <span className="metric-card__label">Periodo cubierto</span>
+                <strong>{analytics.totalDays} dias</strong>
+                <p>
+                  Desde {analytics.rangeStart} hasta {analytics.rangeEnd}.
+                </p>
+              </article>
+
+              <article className="metric-card">
+                <span className="metric-card__label">Mes mas exigente</span>
+                <strong>{formatConsumption(analytics.peakMonth.consumo)}</strong>
+                <p>{analytics.peakMonth.mes}</p>
+              </article>
+            </section>
+
+            <section className="insights-layout">
+              <article className="panel panel--wide">
+                <div className="panel__header">
+                  <div>
+                    <span className="eyebrow">Vista mensual</span>
+                    <h2>Tendencia del consumo por mes</h2>
+                  </div>
+                  <p>
+                    Ideal para detectar temporadas de mayor demanda y comparar
+                    periodos de forma rapida.
+                  </p>
+                </div>
+
+                <div className="chart-shell">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={analytics.monthlyData}>
+                      <CartesianGrid strokeDasharray="4 4" vertical={false} />
+                      <XAxis
+                        dataKey="mes"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={12}
+                      />
+                      <YAxis tickLine={false} axisLine={false} tickMargin={12} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Bar
+                        dataKey="consumo"
+                        fill="#1e847f"
+                        radius={[14, 14, 0, 0]}
+                        maxBarSize={52}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </article>
+
+              <article className="panel">
+                <div className="panel__header">
+                  <div>
+                    <span className="eyebrow">Picos detectados</span>
+                    <h2>Momentos a vigilar</h2>
+                  </div>
+                  <p>Los dias de mayor carga ayudan a priorizar acciones.</p>
+                </div>
+
+                <ol className="ranking-list">
+                  {analytics.topDays.map((day, index) => (
+                    <li key={`${day.fechaCompleta}-${index}`}>
+                      <span className="ranking-list__index">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <div>
+                        <strong>{day.fechaCompleta}</strong>
+                        <span>{formatConsumption(day.consumo)}</span>
+                      </div>
+                    </li>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.slice(0, 10).map((row, i) => (
-                  <tr key={i}>
-                    {Object.values(row).map((val, j) => (
-                      <td key={j} style={styles.td}>
-                        {val !== null ? String(val) : ""}
-                      </td>
+                </ol>
+
+                <div className="mini-card-grid">
+                  <article className="mini-card mini-card--accent">
+                    <span>Dia pico</span>
+                    <strong>{formatConsumption(analytics.peakDay.consumo)}</strong>
+                    <p>{analytics.peakDay.fechaCompleta}</p>
+                  </article>
+
+                  <article className="mini-card">
+                    <span>Hoja origen</span>
+                    <strong>{uploadMeta?.sheetName || "Principal"}</strong>
+                    <p>{sourceFormatLabel}</p>
+                  </article>
+                </div>
+              </article>
+            </section>
+
+            <section className="insights-layout">
+              <article className="panel panel--wide">
+                <div className="panel__header">
+                  <div>
+                    <span className="eyebrow">Vista diaria</span>
+                    <h2>Detalle del comportamiento dia a dia</h2>
+                  </div>
+                  <p>
+                    Útil para ubicar variaciones puntuales, cargas anormales y
+                    dias con posibles oportunidades de ahorro.
+                  </p>
+                </div>
+
+                <div className="chart-shell">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={analytics.dailyData}>
+                      <CartesianGrid strokeDasharray="4 4" vertical={false} />
+                      <XAxis
+                        dataKey="fecha"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={12}
+                      />
+                      <YAxis tickLine={false} axisLine={false} tickMargin={12} />
+                      <Tooltip
+                        content={<ChartTooltip />}
+                        labelFormatter={(value, payload) =>
+                          payload?.[0]?.payload?.fechaCompleta || value
+                        }
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="consumo"
+                        stroke="#f28c28"
+                        strokeWidth={3}
+                        dot={false}
+                        activeDot={{ r: 6, fill: "#f28c28" }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </article>
+
+              <article className="panel">
+                <div className="panel__header">
+                  <div>
+                    <span className="eyebrow">Guia rapida</span>
+                    <h2>Para obtener mejores analisis</h2>
+                  </div>
+                </div>
+
+                <ul className="guidance-list">
+                  <li>
+                    Usa encabezados consistentes:{" "}
+                    <strong>{REQUIRED_COLUMNS.join(" y ")}</strong>.
+                  </li>
+                  <li>
+                    Puedes cargar exportaciones simples en CSV sin convertirlas
+                    manualmente.
+                  </li>
+                  <li>
+                    Si recibes un error, revisa que las filas tengan fechas y
+                    consumos numericos.
+                  </li>
+                </ul>
+              </article>
+            </section>
+
+            <section className="panel">
+              <div className="panel__header panel__header--split">
+                <div>
+                  <span className="eyebrow">Vista previa</span>
+                  <h2>Primeros registros importados</h2>
+                </div>
+                <p>
+                  Mostrando los primeros 10 registros de un total de{" "}
+                  {data.length}.
+                </p>
+              </div>
+
+              <div className="table-shell">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      {Object.keys(data[0]).map((key) => (
+                        <th key={key}>{key}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.slice(0, 10).map((row, rowIndex) => (
+                      <tr key={`row-${rowIndex}`}>
+                        {Object.entries(row).map(([key, value]) => (
+                          <td key={`${key}-${rowIndex}`}>
+                            {value !== null ? String(value) : ""}
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </>
+        ) : (
+          <section className="empty-state">
+            <span className="eyebrow">Sin datos cargados</span>
+            <h2>Sube un archivo para activar el tablero.</h2>
+            <p>
+              Cuando cargues un CSV o Excel, aqui apareceran las tendencias,
+              picos de consumo y la vista previa de registros.
+            </p>
+
+            <div className="empty-state__grid">
+              <article className="empty-card">
+                <strong>CSV o Excel</strong>
+                <p>El sistema acepta ambos formatos con el mismo flujo.</p>
+              </article>
+
+              <article className="empty-card">
+                <strong>Visual inmediato</strong>
+                <p>Las graficas se construyen al terminar la carga.</p>
+              </article>
+
+              <article className="empty-card">
+                <strong>Validacion simple</strong>
+                <p>Solo necesitas las columnas Fecha y Consumo.</p>
+              </article>
+            </div>
+          </section>
+        )}
+      </main>
     </div>
   );
 }
